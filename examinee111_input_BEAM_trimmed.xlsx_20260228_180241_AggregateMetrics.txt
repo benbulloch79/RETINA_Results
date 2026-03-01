@@ -1,0 +1,24 @@
+=== Aggregate Metrics ===
+saccadicOmissionPercentage: 0
+manualOmissionPercentage: 0
+fixationCommissionPercentage: 0
+saccadicCommissionPercentage: 0
+manualCommissionPercentage: 0
+saccadicAnticipationPercentage: 0
+manualAnticipationPercentage: 0
+StandardDeviationManualReactionTime: 69.175762505258
+StandardDeviationSaccadicReactionTime: 65.3308938788099
+InterQuartileRangeManualReactionTime: 46.6366666666667
+InterQuartileRangeSaccadicReactionTime: 60.3656666666667
+medianManualReactionTime: 381.194833333333
+medianSaccadicReactionTime: 303.033333333333
+validManualRTPercentage: 100
+validSaccadicRTPercentage: 100
+totalTrials: 76
+validTrials: 74
+cognitiveSpeed: 1.31151874579125
+cognitiveControl: 0.906059707001418
+cognitiveReadiness: 0.996866594841757
+Gaze off center trial (code h) percentage: 0
+Fixation Loss (code g) percentage: 13.1578947368421
+=== End Aggregate Metrics ===
