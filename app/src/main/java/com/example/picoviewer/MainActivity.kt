@@ -150,18 +150,29 @@ fun MainScreen(onExit: () -> Unit) {
 fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
     val allMetrics = remember(rawData) { MetricsParser.parse(rawData) }
     
+    // Grouping logic based on the internal keys defined in MetricData.kt
     val groups = remember(allMetrics) {
         listOf(
-            allMetrics.filter { it.key in listOf("cognitiveSpeed", "cognitiveControl", "cognitiveReadiness") },
-            allMetrics.filter { it.key in listOf("saccadicOmissionPercentage", "manualOmissionPercentage") },
-            allMetrics.filter { it.key in listOf("fixationCommissionPercentage", "saccadicCommissionPercentage", "manualCommissionPercentage") },
-            allMetrics.filter { it.key in listOf("saccadicAnticipationPercentage", "manualAnticipationPercentage") },
-            allMetrics.filter { it.key in listOf("StandardDeviationManualReactionTime", "StandardDeviationSaccadicReactionTime") },
-            allMetrics.filter { it.key in listOf("InterQuartileRangeManualReactionTime", "InterQuartileRangeSaccadicReactionTime") },
-            allMetrics.filter { it.key in listOf("medianManualReactionTime", "medianSaccadicReactionTime") },
-            allMetrics.filter { it.key in listOf("validManualRTPercentage", "validSaccadicRTPercentage") },
-            allMetrics.filter { it.key in listOf("totalTrials", "validTrials") },
-            allMetrics.filter { it.key.contains("Gaze off center", ignoreCase = true) || it.key.contains("Fixation Loss", ignoreCase = true) }
+            // Row 1: Cognitive Top Trio
+            allMetrics.filter { it.key in listOf("cog_speed", "cog_control", "cog_readiness") },
+            // Row 2: Omissions
+            allMetrics.filter { it.key in listOf("omission_saccadic", "omission_manual") },
+            // Row 3: Commissions / No-Go
+            allMetrics.filter { it.key in listOf("commission_fixation", "commission_saccadic", "commission_manual") },
+            // Row 4: Anticipation
+            allMetrics.filter { it.key in listOf("anticipation_saccadic", "anticipation_manual") },
+            // Row 5: Standard Deviations
+            allMetrics.filter { it.key in listOf("sd_manual", "sd_saccadic") },
+            // Row 6: InterQuartile Ranges
+            allMetrics.filter { it.key in listOf("iqr_manual", "iqr_saccadic") },
+            // Row 7: Median Reaction Times / Median RT
+            allMetrics.filter { it.key in listOf("rt_manual", "rt_saccadic") },
+            // Row 8: Valid Percentages
+            allMetrics.filter { it.key in listOf("valid_manual", "valid_saccadic") },
+            // Row 9: Trials
+            allMetrics.filter { it.key in listOf("trials_total", "trials_valid") },
+            // Row 10: Gaze & Fixation
+            allMetrics.filter { it.key in listOf("gaze_off", "fixation_loss") }
         )
     }
 
@@ -210,7 +221,7 @@ fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
                             MetricTile(
                                 metric = metric, 
                                 modifier = Modifier.weight(1f),
-                                isCognitive = metric.key.startsWith("cognitive")
+                                isCognitive = metric.key.startsWith("cog_")
                             )
                         }
                     }

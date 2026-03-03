@@ -1,0 +1,24 @@
+=== Aggregate Metrics ===
+Saccadic Omission Errors (%): 0
+Manual Omission Errors (%): 0
+Fixation No-Go Errors (%): 0
+Saccadic No-Go Errors (%): 0
+Manual No-Go Errors (%): 0
+Saccadic Anticipation Errors (%): 6.67
+Manual Anticipation Errors (%): 0
+Manual SD: 44.86
+Saccadic SD: 58.3
+Manual IQR: 62.69
+Saccadic IQR: 96.84
+Manual RT: 324.05
+Saccadic RT: 282.08
+Valid Manual RTs (%): 100
+Valid Saccadic RTs (%): 100
+Total Trials: 76
+Valid Trials: 62
+Cognitive Speed: 120
+Cognitive Control: 104
+Cognitive Readiness: 108
+Gaze Off Center (%): 0
+Fixation Loss (%): 30.26
+=== End Aggregate Metrics ===
