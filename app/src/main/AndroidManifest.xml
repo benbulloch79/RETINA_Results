@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Single-activity app: launcher entry is MainActivity (Compose). Landscape for VR/tablet use. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.picoviewer">
 

@@ -1,3 +1,6 @@
+// Android app module: RETINA Results viewer (Jetpack Compose UI in MainActivity.kt).
+// APK output name is set below so sideloaded builds are easy to spot on device.
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")

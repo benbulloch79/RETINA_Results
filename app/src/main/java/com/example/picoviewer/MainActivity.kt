@@ -32,9 +32,17 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.system.exitProcess
 
+/**
+ * RETINA Results viewer UI.
+ *
+ * Flow: [MainScreen] opens the system file picker, reads the chosen file as plain text, then
+ * [MetricsScreen] parses it with [MetricsParser] and lays out tiles in a fixed order (cognitive row,
+ * then saccadic, manual, miscellaneous). See [MetricData.kt] for parsing and label normalization.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Dark theme tuned for VR / kiosk-style devices; root composable is MainScreen.
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -43,18 +51,23 @@ class MainActivity : ComponentActivity() {
                     surface = Color(0xFF1E1E1E)
                 )
             ) {
+                // Close removes the task and exits the process (handy on headsets with no app switcher).
                 MainScreen(onExit = { finishAndRemoveTask(); exitProcess(0) })
             }
         }
     }
 }
 
+/**
+ * Landing UI: pick a metrics text file, or show [MetricsScreen] once [selectedFileData] is loaded.
+ */
 @Composable
 fun MainScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     var selectedFileData by remember { mutableStateOf<String?>(null) }
     var fileName by remember { mutableStateOf("") }
 
+    // SAF document picker — works with Drive, Downloads, etc.; no hard-coded paths.
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri: Uri? ->
@@ -67,6 +80,7 @@ fun MainScreen(onExit: () -> Unit) {
                         }
                     }
                     
+                    // Entire file is read as UTF-8 text; parser expects "Label: value" lines.
                     val content = context.contentResolver.openInputStream(it)?.use { stream ->
                         BufferedReader(InputStreamReader(stream)).readText()
                     }
@@ -146,34 +160,49 @@ fun MainScreen(onExit: () -> Unit) {
     }
 }
 
+// Canonical key order for layout (must match keys produced by MetricsParser.mapToInternalKey).
+// File order is ignored; we always show metrics in this order when present.
+
+private val cognitiveKeyOrder = listOf("cog_readiness", "cog_control", "cog_speed")
+private val saccadicKeyOrder = listOf(
+    "omission_saccadic",
+    "commission_saccadic",
+    "anticipation_saccadic",
+    "sd_saccadic",
+    "iqr_saccadic",
+    "rt_saccadic",
+    "valid_saccadic",
+)
+private val manualKeyOrder = listOf(
+    "omission_manual",
+    "commission_manual",
+    "anticipation_manual",
+    "sd_manual",
+    "iqr_manual",
+    "rt_manual",
+    "valid_manual",
+)
+
+/**
+ * Parsed metrics grouped for display: one row for cognitive (three tiles), then scrolling sections
+ * for saccadic, manual, and misc. [Metric.tileLabel] carries user-facing titles (parallel for
+ * saccadic vs manual).
+ */
 @Composable
 fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
     val allMetrics = remember(rawData) { MetricsParser.parse(rawData) }
-    
-    // Grouping logic based on the internal keys defined in MetricData.kt
-    val groups = remember(allMetrics) {
-        listOf(
-            // Row 1: Cognitive Top Trio
-            allMetrics.filter { it.key in listOf("cog_speed", "cog_control", "cog_readiness") },
-            // Row 2: Omissions
-            allMetrics.filter { it.key in listOf("omission_saccadic", "omission_manual") },
-            // Row 3: Commissions / No-Go
-            allMetrics.filter { it.key in listOf("commission_fixation", "commission_saccadic", "commission_manual") },
-            // Row 4: Anticipation
-            allMetrics.filter { it.key in listOf("anticipation_saccadic", "anticipation_manual") },
-            // Row 5: Standard Deviations
-            allMetrics.filter { it.key in listOf("sd_manual", "sd_saccadic") },
-            // Row 6: InterQuartile Ranges
-            allMetrics.filter { it.key in listOf("iqr_manual", "iqr_saccadic") },
-            // Row 7: Median Reaction Times / Median RT
-            allMetrics.filter { it.key in listOf("rt_manual", "rt_saccadic") },
-            // Row 8: Valid Percentages
-            allMetrics.filter { it.key in listOf("valid_manual", "valid_saccadic") },
-            // Row 9: Trials
-            allMetrics.filter { it.key in listOf("trials_total", "trials_valid") },
-            // Row 10: Gaze & Fixation
-            allMetrics.filter { it.key in listOf("gaze_off", "fixation_loss") }
-        )
+
+    // Last wins if duplicate keys ever appear in one file.
+    val byKey = remember(allMetrics) { allMetrics.associateBy { it.key } }
+    val cognitiveRow = remember(byKey) { cognitiveKeyOrder.mapNotNull { byKey[it] } }
+    val saccadicList = remember(byKey) { saccadicKeyOrder.mapNotNull { byKey[it] } }
+    val manualList = remember(byKey) { manualKeyOrder.mapNotNull { byKey[it] } }
+    // Everything classified as MISC in the parser (fixation no-go, trials, gaze, unknowns, …).
+    val miscList = remember(allMetrics) {
+        allMetrics
+            .filter { it.section == MetricSection.MISC }
+            .distinctBy { it.key }
+            .sortedWith(compareBy({ it.sectionOrder }, { it.label.lowercase() }))
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -211,26 +240,80 @@ fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(groups) { group ->
-                if (group.isNotEmpty()) {
+            // Single horizontal row: Readiness | Control | Speed (only tiles that exist in file).
+            if (cognitiveRow.isNotEmpty()) {
+                item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        group.forEach { metric ->
+                        cognitiveRow.forEach { metric ->
                             MetricTile(
-                                metric = metric, 
+                                metric = metric,
                                 modifier = Modifier.weight(1f),
-                                isCognitive = metric.key.startsWith("cog_")
+                                isCognitive = true,
                             )
                         }
                     }
+                }
+            }
+
+            // Full-width tiles, same label pattern as Manual (see Metric.displayLabel in parser).
+            if (saccadicList.isNotEmpty()) {
+                item {
+                    SectionTitle("Saccadic")
+                }
+                items(saccadicList) { metric ->
+                    MetricTile(
+                        metric = metric,
+                        modifier = Modifier.fillMaxWidth(),
+                        isCognitive = false,
+                    )
+                }
+            }
+
+            if (manualList.isNotEmpty()) {
+                item {
+                    SectionTitle("Manual")
+                }
+                items(manualList) { metric ->
+                    MetricTile(
+                        metric = metric,
+                        modifier = Modifier.fillMaxWidth(),
+                        isCognitive = false,
+                    )
+                }
+            }
+
+            if (miscList.isNotEmpty()) {
+                item {
+                    SectionTitle("Miscellaneous")
+                }
+                items(miscList) { metric ->
+                    MetricTile(
+                        metric = metric,
+                        modifier = Modifier.fillMaxWidth(),
+                        isCognitive = false,
+                    )
                 }
             }
         }
     }
 }
 
+/** Section heading above saccadic / manual / misc lists in the LazyColumn. */
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+    )
+}
+
+/** One metric: label ([Metric.tileLabel]) + value; cognitive tiles use a highlighted card color. */
 @Composable
 fun MetricTile(metric: Metric, modifier: Modifier = Modifier, isCognitive: Boolean = false) {
     Card(
@@ -246,7 +329,7 @@ fun MetricTile(metric: Metric, modifier: Modifier = Modifier, isCognitive: Boole
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = metric.label,
+                text = metric.tileLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isCognitive) MaterialTheme.colorScheme.primary else Color.Gray,
                 textAlign = TextAlign.Center,
