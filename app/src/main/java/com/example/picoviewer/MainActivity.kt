@@ -33,7 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.Locale
 import kotlin.system.exitProcess
+
+/** True when the picker filename is explicitly `.txt` (CSV is commonly `text/plain` too). */
+private fun isTxtFileName(displayName: String?): Boolean =
+    displayName?.trim()?.lowercase(Locale.US)?.endsWith(".txt") == true
 
 /**
  * Where RETINA Task stores results on device internal storage (`…/Android/data/…/files/Results`).
@@ -96,10 +101,13 @@ fun MainScreen(onExit: () -> Unit) {
                     context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
                         val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                         if (cursor.moveToFirst()) {
-                            fileName = cursor.getString(nameIndex)
+                            fileName = cursor.getString(nameIndex) ?: ""
                         }
                     }
-                    
+                    if (!isTxtFileName(fileName)) {
+                        Toast.makeText(context, "Only .txt results files are supported", Toast.LENGTH_LONG).show()
+                        return@let
+                    }
                     // Entire file is read as UTF-8 text; parser expects "Label: value" lines.
                     val content = context.contentResolver.openInputStream(it)?.use { stream ->
                         BufferedReader(InputStreamReader(stream)).readText()
@@ -153,7 +161,7 @@ fun MainScreen(onExit: () -> Unit) {
                     Spacer(modifier = Modifier.height(32.dp))
                     
                     Button(
-                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        onClick = { filePickerLauncher.launch(arrayOf("text/plain")) },
                         modifier = Modifier.height(60.dp).width(260.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
