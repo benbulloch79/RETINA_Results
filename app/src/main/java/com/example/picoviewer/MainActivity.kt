@@ -1,7 +1,10 @@
 package com.example.picoviewer
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -31,6 +34,23 @@ import androidx.compose.ui.unit.sp
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.system.exitProcess
+
+/**
+ * Where RETINA Task stores results on device internal storage (`…/Android/data/…/files/Results`).
+ * Passed to the system SAF picker so it can open here first (API 26+; OEMs may ignore the hint).
+ */
+private val retinaTaskResultsDocumentsUri: Uri = DocumentsContract.buildDocumentUri(
+    "com.android.externalstorage.documents",
+    "primary:Android/data/com.RetinaTek.RETINATask/files/Results",
+)
+
+private class OpenDocumentStartingAtResults : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: Context, input: Array<String>): Intent {
+        return super.createIntent(context, input).apply {
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, retinaTaskResultsDocumentsUri)
+        }
+    }
+}
 
 /**
  * RETINA Results viewer UI.
@@ -69,7 +89,7 @@ fun MainScreen(onExit: () -> Unit) {
 
     // SAF document picker — works with Drive, Downloads, etc.; no hard-coded paths.
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
+        contract = OpenDocumentStartingAtResults(),
         onResult = { uri: Uri? ->
             uri?.let {
                 try {
@@ -142,7 +162,7 @@ fun MainScreen(onExit: () -> Unit) {
                     
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
-                        "Note: Use the menu in the picker to 'Show Internal Storage' if you don't see your folders.",
+                        "The picker should open in the RETINA Task Results folder. If not, use the menu to show internal storage, then browse Android/data/com.RetinaTek.RETINATask/files/Results.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray,
                         textAlign = TextAlign.Center,
