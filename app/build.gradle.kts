@@ -14,10 +14,15 @@ android {
         applicationId = "com.example.picoviewer"
         minSdk = 26 // Required for Pico Neo 3 (Android 10)
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // HTTPS endpoint that accepts JSON from [ResultsUploader] (e.g. Google Apps Script Web App).
+        // Leave URL empty to disable upload until you deploy the receiver.
+        buildConfigField("String", "UPLOAD_ENDPOINT_URL", "\"\"")
+        buildConfigField("String", "UPLOAD_SHARED_SECRET", "\"\"")
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -46,6 +51,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.13"
@@ -58,6 +64,8 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.1")

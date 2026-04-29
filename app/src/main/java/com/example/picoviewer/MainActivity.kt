@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.picoviewer.BuildConfig
+import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.Locale
@@ -91,6 +94,9 @@ fun MainScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     var selectedFileData by remember { mutableStateOf<String?>(null) }
     var fileName by remember { mutableStateOf("") }
+    var selectedTxtUri by remember { mutableStateOf<Uri?>(null) }
+    var pairedCsvUri by remember { mutableStateOf<Uri?>(null) }
+    var pairedCsvDisplayName by remember { mutableStateOf<String?>(null) }
 
     // SAF document picker — works with Drive, Downloads, etc.; no hard-coded paths.
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -108,6 +114,9 @@ fun MainScreen(onExit: () -> Unit) {
                         Toast.makeText(context, "Only .txt results files are supported", Toast.LENGTH_LONG).show()
                         return@let
                     }
+                    selectedTxtUri = it
+                    pairedCsvUri = resolveCsvSiblingUri(context, it, fileName)
+                    pairedCsvDisplayName = pairedCsvUri?.let { csvUri -> queryUriDisplayName(context, csvUri) }
                     // Entire file is read as UTF-8 text; parser expects "Label: value" lines.
                     val content = context.contentResolver.openInputStream(it)?.use { stream ->
                         BufferedReader(InputStreamReader(stream)).readText()
@@ -181,7 +190,15 @@ fun MainScreen(onExit: () -> Unit) {
                 MetricsScreen(
                     rawData = selectedFileData!!,
                     fileName = fileName,
-                    onBack = { selectedFileData = null }
+                    txtUri = selectedTxtUri!!,
+                    csvUri = pairedCsvUri,
+                    csvDisplayName = pairedCsvDisplayName,
+                    onBack = {
+                        selectedFileData = null
+                        selectedTxtUri = null
+                        pairedCsvUri = null
+                        pairedCsvDisplayName = null
+                    },
                 )
             }
         }
@@ -217,7 +234,14 @@ private val manualKeyOrder = listOf(
  * saccadic vs manual).
  */
 @Composable
-fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
+fun MetricsScreen(
+    rawData: String,
+    fileName: String,
+    txtUri: Uri,
+    csvUri: Uri?,
+    csvDisplayName: String?,
+    onBack: () -> Unit,
+) {
     val allMetrics = remember(rawData) { MetricsParser.parse(rawData) }
 
     // Last wins if duplicate keys ever appear in one file.
@@ -323,6 +347,116 @@ fun MetricsScreen(rawData: String, fileName: String, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         isCognitive = false,
                     )
+                }
+            }
+
+            item {
+                UploadToDriveSection(
+                    txtUri = txtUri,
+                    txtFileName = fileName,
+                    csvUri = csvUri,
+                    csvDisplayName = csvDisplayName,
+                )
+            }
+        }
+    }
+}
+
+/** POST JSON/base64 to [BuildConfig.UPLOAD_ENDPOINT_URL] (Drive ingest script); shows CSV sibling status. */
+@Composable
+private fun UploadToDriveSection(
+    txtUri: Uri,
+    txtFileName: String,
+    csvUri: Uri?,
+    csvDisplayName: String?,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var uploading by remember { mutableStateOf(false) }
+    val endpoint = BuildConfig.UPLOAD_ENDPOINT_URL
+    val secret = BuildConfig.UPLOAD_SHARED_SECRET
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Wi‑Fi upload",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+            }
+            Text(
+                if (csvUri != null && !csvDisplayName.isNullOrBlank()) {
+                    "CSV paired: $csvDisplayName"
+                } else {
+                    "No sibling CSV next to this TXT (same folder, same name with .csv). Only the TXT will be uploaded unless CSV exists."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+            )
+            when {
+                endpoint.isBlank() -> {
+                    Text(
+                        "Not configured: set UPLOAD_ENDPOINT_URL (HTTPS Web App URL) and UPLOAD_SHARED_SECRET in app/build.gradle.kts. Deploy scripts/google-apps-script-upload.gs to Drive.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                    )
+                }
+                else -> {
+                    Button(
+                        onClick = {
+                            if (uploading) return@Button
+                            uploading = true
+                            scope.launch {
+                                val csvUploadName = when {
+                                    csvUri == null -> null
+                                    !csvDisplayName.isNullOrBlank() -> csvDisplayName
+                                    else -> txtFileName.replace(Regex("(?i)\\.txt$"), ".csv")
+                                }
+                                val result = ResultsUploader.upload(
+                                    context = context,
+                                    endpointHttpsUrl = endpoint,
+                                    sharedSecret = secret,
+                                    txtUri = txtUri,
+                                    txtFileName = txtFileName,
+                                    csvUri = csvUri,
+                                    csvFileName = csvUploadName,
+                                )
+                                uploading = false
+                                when (result) {
+                                    is ResultsUploader.UploadResult.Success ->
+                                        Toast.makeText(context, "Upload succeeded", Toast.LENGTH_LONG).show()
+                                    is ResultsUploader.UploadResult.Failure ->
+                                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !uploading,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        if (uploading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 3.dp,
+                            )
+                        } else {
+                            Text("Upload to server / Drive folder", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
