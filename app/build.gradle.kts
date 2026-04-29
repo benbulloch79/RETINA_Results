@@ -1,9 +1,24 @@
 // Android app module: RETINA Results viewer (Jetpack Compose UI in MainActivity.kt).
 // APK output name is set below so sideloaded builds are easy to spot on device.
 
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun quotedBuildConfigString(name: String): String {
+    val value = (findProperty(name) as? String) ?: localProperties.getProperty(name).orEmpty()
+    val escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+    return "\"$escaped\""
 }
 
 android {
@@ -20,9 +35,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // HTTPS endpoint that accepts JSON from [ResultsUploader] (e.g. Google Apps Script Web App).
-        // Leave URL empty to disable upload until you deploy the receiver.
-        buildConfigField("String", "UPLOAD_ENDPOINT_URL", "\"\"")
-        buildConfigField("String", "UPLOAD_SHARED_SECRET", "\"\"")
+        // Values come from ignored local.properties or Gradle -P args so secrets are not committed.
+        buildConfigField("String", "UPLOAD_ENDPOINT_URL", quotedBuildConfigString("UPLOAD_ENDPOINT_URL"))
+        buildConfigField("String", "UPLOAD_SHARED_SECRET", quotedBuildConfigString("UPLOAD_SHARED_SECRET"))
         vectorDrawables {
             useSupportLibrary = true
         }

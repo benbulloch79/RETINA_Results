@@ -401,7 +401,7 @@ private fun UploadToDriveSection(
                 if (csvUri != null && !csvDisplayName.isNullOrBlank()) {
                     "CSV paired: $csvDisplayName"
                 } else {
-                    "No sibling CSV next to this TXT (same folder, same name with .csv). Only the TXT will be uploaded unless CSV exists."
+                    "No nearby CSV found in the same folder. Only the TXT will be uploaded unless a timestamp-matched CSV exists."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
