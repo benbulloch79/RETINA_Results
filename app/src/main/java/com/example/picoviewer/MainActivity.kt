@@ -43,6 +43,9 @@ import kotlin.system.exitProcess
 private fun isTxtFileName(displayName: String?): Boolean =
     displayName?.trim()?.lowercase(Locale.US)?.endsWith(".txt") == true
 
+private fun isCsvFileName(displayName: String?): Boolean =
+    displayName?.trim()?.lowercase(Locale.US)?.endsWith(".csv") == true
+
 /**
  * Where RETINA Task stores results on device internal storage (`…/Android/data/…/files/Results`).
  * Passed to the system SAF picker so it can open here first (API 26+; OEMs may ignore the hint).
@@ -133,6 +136,26 @@ fun MainScreen(onExit: () -> Unit) {
         }
     )
 
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+        contract = OpenDocumentStartingAtResults(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                try {
+                    val csvName = queryUriDisplayName(context, it).orEmpty()
+                    if (!isCsvFileName(csvName)) {
+                        Toast.makeText(context, "Only .csv results files are supported", Toast.LENGTH_LONG).show()
+                        return@let
+                    }
+                    pairedCsvUri = it
+                    pairedCsvDisplayName = csvName
+                    Toast.makeText(context, "CSV selected: $csvName", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error opening CSV: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        },
+    )
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -193,6 +216,17 @@ fun MainScreen(onExit: () -> Unit) {
                     txtUri = selectedTxtUri!!,
                     csvUri = pairedCsvUri,
                     csvDisplayName = pairedCsvDisplayName,
+                    onPickCsv = {
+                        csvPickerLauncher.launch(
+                            arrayOf(
+                                "text/csv",
+                                "text/comma-separated-values",
+                                "application/vnd.ms-excel",
+                                "text/plain",
+                                "*/*",
+                            ),
+                        )
+                    },
                     onBack = {
                         selectedFileData = null
                         selectedTxtUri = null
@@ -240,6 +274,7 @@ fun MetricsScreen(
     txtUri: Uri,
     csvUri: Uri?,
     csvDisplayName: String?,
+    onPickCsv: () -> Unit,
     onBack: () -> Unit,
 ) {
     val allMetrics = remember(rawData) { MetricsParser.parse(rawData) }
@@ -356,6 +391,7 @@ fun MetricsScreen(
                     txtFileName = fileName,
                     csvUri = csvUri,
                     csvDisplayName = csvDisplayName,
+                    onPickCsv = onPickCsv,
                 )
             }
         }
@@ -369,6 +405,7 @@ private fun UploadToDriveSection(
     txtFileName: String,
     csvUri: Uri?,
     csvDisplayName: String?,
+    onPickCsv: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -401,11 +438,20 @@ private fun UploadToDriveSection(
                 if (csvUri != null && !csvDisplayName.isNullOrBlank()) {
                     "CSV paired: $csvDisplayName"
                 } else {
-                    "No nearby CSV found in the same folder. Only the TXT will be uploaded unless a timestamp-matched CSV exists."
+                    "No nearby CSV was auto-detected. Select the matching CSV manually so TXT and CSV upload together."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
             )
+            if (csvUri == null) {
+                OutlinedButton(
+                    onClick = onPickCsv,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("SELECT MATCHING CSV", fontWeight = FontWeight.Bold)
+                }
+            }
             when {
                 endpoint.isBlank() -> {
                     Text(
