@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import kotlin.math.abs
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -60,7 +61,58 @@ fun resolveCsvSiblingUri(context: Context, txtUri: Uri, txtDisplayName: String):
                     .takeIf { it > 0L }
                     ?: parseRetinaTimestampMillis(name)
                     ?: continue
-                candidates += DocumentsContract.buildDocumentUri(authority, childId) to kotlin.math.abs(csvTime - txtTime)
+                candidates += DocumentsContract.buildDocumentUri(authority, childId) to abs(csvTime - txtTime)
+            }
+        }
+        candidates.minByOrNull { it.second }?.first
+    } catch (_: Exception) {
+        null
+    }
+}
+
+fun resolveCsvFromResultsFolderUri(
+    context: Context,
+    folderTreeUri: Uri,
+    txtUri: Uri,
+    txtDisplayName: String,
+    maxDifferenceMillis: Long = 10 * 60 * 1000L,
+): Uri? {
+    val treeDocumentId = try {
+        DocumentsContract.getTreeDocumentId(folderTreeUri)
+    } catch (_: IllegalArgumentException) {
+        return null
+    }
+
+    val txtTime = queryLastModified(context, txtUri)
+        .takeIf { it > 0L }
+        ?: parseRetinaTimestampMillis(txtDisplayName)
+        ?: return null
+
+    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(folderTreeUri, treeDocumentId)
+    val projection = arrayOf(
+        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+    )
+
+    return try {
+        val candidates = mutableListOf<Pair<Uri, Long>>()
+        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val modifiedIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+            while (cursor.moveToNext()) {
+                val name = cursor.getStringOrNull(nameIdx) ?: continue
+                if (!name.lowercase(Locale.US).endsWith(".csv")) continue
+                val childId = cursor.getStringOrNull(idIdx) ?: continue
+                val csvTime = cursor.getLongOrZero(modifiedIdx)
+                    .takeIf { it > 0L }
+                    ?: parseRetinaTimestampMillis(name)
+                    ?: continue
+                val difference = abs(csvTime - txtTime)
+                if (difference <= maxDifferenceMillis) {
+                    candidates += DocumentsContract.buildDocumentUriUsingTree(folderTreeUri, childId) to difference
+                }
             }
         }
         candidates.minByOrNull { it.second }?.first

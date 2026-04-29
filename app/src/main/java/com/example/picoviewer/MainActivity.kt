@@ -55,12 +55,37 @@ private val retinaTaskResultsDocumentsUri: Uri = DocumentsContract.buildDocument
     "primary:Android/data/com.RetinaTek.RETINATask/files/Results",
 )
 
+private const val PREFS_NAME = "retina_results_prefs"
+private const val RESULTS_FOLDER_URI_KEY = "results_folder_uri"
+
 private class OpenDocumentStartingAtResults : ActivityResultContracts.OpenDocument() {
     override fun createIntent(context: Context, input: Array<String>): Intent {
         return super.createIntent(context, input).apply {
             putExtra(DocumentsContract.EXTRA_INITIAL_URI, retinaTaskResultsDocumentsUri)
         }
     }
+}
+
+private class OpenDocumentTreeStartingAtResults : ActivityResultContracts.OpenDocumentTree() {
+    override fun createIntent(context: Context, input: Uri?): Intent {
+        return super.createIntent(context, input ?: retinaTaskResultsDocumentsUri).apply {
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, retinaTaskResultsDocumentsUri)
+        }
+    }
+}
+
+private fun savedResultsFolderUri(context: Context): Uri? =
+    context
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(RESULTS_FOLDER_URI_KEY, null)
+        ?.let(Uri::parse)
+
+private fun saveResultsFolderUri(context: Context, uri: Uri) {
+    context
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putString(RESULTS_FOLDER_URI_KEY, uri.toString())
+        .apply()
 }
 
 /**
@@ -100,6 +125,7 @@ fun MainScreen(onExit: () -> Unit) {
     var selectedTxtUri by remember { mutableStateOf<Uri?>(null) }
     var pairedCsvUri by remember { mutableStateOf<Uri?>(null) }
     var pairedCsvDisplayName by remember { mutableStateOf<String?>(null) }
+    var resultsFolderUri by remember { mutableStateOf(savedResultsFolderUri(context)) }
 
     // SAF document picker — works with Drive, Downloads, etc.; no hard-coded paths.
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -118,7 +144,9 @@ fun MainScreen(onExit: () -> Unit) {
                         return@let
                     }
                     selectedTxtUri = it
-                    pairedCsvUri = resolveCsvSiblingUri(context, it, fileName)
+                    pairedCsvUri = resultsFolderUri?.let { folderUri ->
+                        resolveCsvFromResultsFolderUri(context, folderUri, it, fileName)
+                    } ?: resolveCsvSiblingUri(context, it, fileName)
                     pairedCsvDisplayName = pairedCsvUri?.let { csvUri -> queryUriDisplayName(context, csvUri) }
                     // Entire file is read as UTF-8 text; parser expects "Label: value" lines.
                     val content = context.contentResolver.openInputStream(it)?.use { stream ->
@@ -151,6 +179,30 @@ fun MainScreen(onExit: () -> Unit) {
                     Toast.makeText(context, "CSV selected: $csvName", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error opening CSV: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        },
+    )
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = OpenDocumentTreeStartingAtResults(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    saveResultsFolderUri(context, it)
+                    resultsFolderUri = it
+                    val txtUri = selectedTxtUri
+                    if (txtUri != null && fileName.isNotBlank()) {
+                        pairedCsvUri = resolveCsvFromResultsFolderUri(context, it, txtUri, fileName)
+                        pairedCsvDisplayName = pairedCsvUri?.let { csvUri -> queryUriDisplayName(context, csvUri) }
+                    }
+                    Toast.makeText(context, "Results folder access saved", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Could not save folder access: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         },
@@ -216,6 +268,7 @@ fun MainScreen(onExit: () -> Unit) {
                     txtUri = selectedTxtUri!!,
                     csvUri = pairedCsvUri,
                     csvDisplayName = pairedCsvDisplayName,
+                    hasResultsFolderAccess = resultsFolderUri != null,
                     onPickCsv = {
                         csvPickerLauncher.launch(
                             arrayOf(
@@ -227,6 +280,7 @@ fun MainScreen(onExit: () -> Unit) {
                             ),
                         )
                     },
+                    onGrantFolderAccess = { folderPickerLauncher.launch(resultsFolderUri ?: retinaTaskResultsDocumentsUri) },
                     onBack = {
                         selectedFileData = null
                         selectedTxtUri = null
@@ -274,7 +328,9 @@ fun MetricsScreen(
     txtUri: Uri,
     csvUri: Uri?,
     csvDisplayName: String?,
+    hasResultsFolderAccess: Boolean,
     onPickCsv: () -> Unit,
+    onGrantFolderAccess: () -> Unit,
     onBack: () -> Unit,
 ) {
     val allMetrics = remember(rawData) { MetricsParser.parse(rawData) }
@@ -391,7 +447,9 @@ fun MetricsScreen(
                     txtFileName = fileName,
                     csvUri = csvUri,
                     csvDisplayName = csvDisplayName,
+                    hasResultsFolderAccess = hasResultsFolderAccess,
                     onPickCsv = onPickCsv,
+                    onGrantFolderAccess = onGrantFolderAccess,
                 )
             }
         }
@@ -405,7 +463,9 @@ private fun UploadToDriveSection(
     txtFileName: String,
     csvUri: Uri?,
     csvDisplayName: String?,
+    hasResultsFolderAccess: Boolean,
     onPickCsv: () -> Unit,
+    onGrantFolderAccess: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -437,12 +497,23 @@ private fun UploadToDriveSection(
             Text(
                 if (csvUri != null && !csvDisplayName.isNullOrBlank()) {
                     "CSV paired: $csvDisplayName"
+                } else if (hasResultsFolderAccess) {
+                    "Results folder access is saved, but no CSV within 10 minutes was found. Select the matching CSV manually."
                 } else {
-                    "No nearby CSV was auto-detected. Select the matching CSV manually so TXT and CSV upload together."
+                    "Grant Results folder access so the app can auto-detect the closest CSV. You can still select it manually."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
             )
+            if (!hasResultsFolderAccess) {
+                OutlinedButton(
+                    onClick = onGrantFolderAccess,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("GRANT RESULTS FOLDER ACCESS", fontWeight = FontWeight.Bold)
+                }
+            }
             if (csvUri == null) {
                 OutlinedButton(
                     onClick = onPickCsv,
