@@ -2,10 +2,14 @@
  * Sample Google Apps Script Web App for RETINA Results Wi‑Fi upload.
  *
  * 1. script.google.com → New project → paste this file.
- * 2. Replace TARGET_FOLDER_ID with your Drive folder id (from URL).
- * 3. Project Settings → Script properties → Add SECRET = shared passphrase (match UPLOAD_SHARED_SECRET in app).
- * 4. Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone (secret protects writes).
- * 5. Copy Web App URL into UPLOAD_ENDPOINT_URL in app/build.gradle.kts (must be https).
+ * 2. Project Settings → Script properties → add:
+ *      SECRET = same value as UPLOAD_SHARED_SECRET in app/build.gradle.kts
+ *      TARGET_FOLDER_ID = 1DtKKA72wu8wTrKDpSWyYS2y104gAS9vp
+ *    (Ben PICO Demo Results — folder URL:
+ *     https://drive.google.com/drive/folders/1DtKKA72wu8wTrKDpSWyYS2y104gAS9vp )
+ *    The account used for "Deploy → Execute as: Me" must be able to add files to this folder.
+ * 3. Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone (secret protects writes).
+ * 4. Copy Web App URL into UPLOAD_ENDPOINT_URL in app/build.gradle.kts (must be https).
  */
 function doPost(e) {
   try {
